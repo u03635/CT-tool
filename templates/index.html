@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HVAC 現場數據查核系統 (12LPM 版)</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1E1E1E;
+            --text-main: #E0E0E0;
+            --text-muted: #A0A0A0;
+            --border-color: #333333;
+            --accent-green: #388E3C;
+            --accent-red: #D32F2F;
+            --accent-yellow: #FBC02D;
+            --input-bg: #2C2C2C;
+            --modal-bg: rgba(0, 0, 0, 0.75);
+        }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 15px; }
+        .container { max-width: 700px; margin: 0 auto; }
+        .card { background: var(--card-bg); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 20px; position: relative; }
+        
+        .header-container { display: flex; align-items: center; justify-content: center; margin-top: 0; margin-bottom: 15px; }
+        h2 { margin: 0; color: #FFFFFF; font-size: 1.5rem; }
+        .icon-btn { background: none; border: none; font-size: 1.2rem; cursor: pointer; margin-left: 10px; color: #81D4FA; transition: 0.2s; padding: 5px; }
+        .icon-btn:hover { color: #FFF; transform: scale(1.1); }
+        
+        h3 { color: #81D4FA; border-bottom: 1px solid var(--border-color); padding-bottom: 5px; font-size: 1.1rem; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .form-group { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-muted); }
+        
+        input[type="number"] { width: 100%; padding: 10px; background-color: var(--input-bg); border: 1px solid var(--border-color); color: #FFF; border-radius: 6px; box-sizing: border-box; }
+        input:focus { outline: none; border-color: #81D4FA; }
+        
+        button.action-btn { width: 100%; padding: 15px; background-color: var(--accent-green); color: white; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
+        button.action-btn:hover { opacity: 0.9; }
+        
+        #result-box { display: none; margin-top: 20px; }
+        .alert-msg { margin-bottom: 10px; padding: 10px; border-radius: 6px; background-color: var(--input-bg); line-height: 1.5; }
+        .metric-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border-color); }
+        
+        /* 懸浮視窗 (Modal) 樣式 */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: var(--modal-bg); align-items: center; justify-content: center; }
+        .modal-content { background-color: var(--card-bg); padding: 25px; border: 1px solid var(--border-color); border-radius: 12px; max-width: 500px; width: 90%; box-shadow: 0 5px 15px rgba(0,0,0,0.5); position: relative; }
+        .close-btn { position: absolute; top: 15px; right: 20px; color: var(--text-muted); font-size: 24px; font-weight: bold; cursor: pointer; }
+        .close-btn:hover { color: #FFF; }
+        .modal-content h4 { margin-top: 0; color: #81D4FA; font-size: 1.3rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+        .modal-content ul { padding-left: 20px; color: var(--text-main); line-height: 1.6; }
+        .modal-content li { margin-bottom: 10px; }
+        .modal-content code { background-color: var(--input-bg); padding: 2px 6px; border-radius: 4px; color: #FBC02D; font-family: monospace; }
+        
+        @media (max-width: 500px) { .grid-2 { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <div class="header-container">
+            <h2>水塔與水泵現場檢驗工具</h2>
+            <button class="icon-btn" onclick="openModal()" title="顯示運算公式">ℹ️</button>
+        </div>
+        
+        <h3>📝 設備設計值 (Design Criteria)</h3>
+        <div class="grid-2">
+            <div class="form-group"><label>冷卻水塔設計噸數 (RT)</label><input type="number" id="tower_rt" placeholder="例: 100"></div>
+            <div class="form-group"><label>水泵馬達額定功率 (kW)</label><input type="number" id="motor_np_kw" placeholder="例: 5.5"></div>
+            <div class="form-group"><label>風扇馬達額定功率 (kW)</label><input type="number" id="fan_np_kw" placeholder="例: 3.7"></div>
+        </div>
+
+        <h3>🛠 現場量測數據 (Measured Data)</h3>
+        <div class="grid-2">
+            <div class="form-group"><label>實際水泵流量 (LPM)</label><input type="number" id="flow_meas"></div>
+            <div class="form-group"><label>實際水泵耗電 (kW)</label><input type="number" id="pump_kw_meas"></div>
+            <div class="form-group"><label>實際風扇耗電 (kW)</label><input type="number" id="fan_kw_meas"></div>
+            <div class="form-group"><label>進水管溫度 (°C)</label><input type="number" id="t_in"></div>
+            <div class="form-group"><label>出水管溫度 (°C)</label><input type="number" id="t_out"></div>
+            <div class="form-group"><label>儲水槽水溫 (°C)</label><input type="number" id="t_basin"></div>
+            <div class="form-group"><label>外氣濕球溫度 (°C)</label><input type="number" id="t_wet"></div>
+        </div>
+
+        <button class="action-btn" onclick="submitData()">執行交叉驗證</button>
+    </div>
+
+    <div class="card" id="result-box">
+        <h3>📊 驗證結果與效能指標</h3>
+        <div id="alerts-container"></div>
+        <div style="margin-top: 15px;" id="metrics-container"></div>
+    </div>
+</div>
+
+<!-- 公式懸浮視窗 (Modal) -->
+<div id="formulaModal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeModal()">&times;</span>
+        <h4>📐 運算公式與邏輯說明</h4>
+        <ul>
+            <li><strong>標準循環水量：</strong><br>
+                <code>估算流量 = 水塔 RT × 12 (LPM)</code><br>
+                <small style="color: var(--text-muted);">*基於排熱噸 3900 kcal/h 與 5.4°C 溫差所計算出之基準水量。</small>
+            </li>
+            <li><strong>設備負載率 (Load Ratio)：</strong><br>
+                <code>負載率(%) = (實際耗電 kW / 銘牌 kW) × 100</code><br>
+                <small style="color: var(--text-muted);">*超出 100% 代表過載運轉。</small>
+            </li>
+            <li><strong>趨近溫度 (Approach)：</strong><br>
+                <code>趨近溫度 = 出水管溫度 - 外氣濕球溫度</code><br>
+                <small style="color: var(--text-muted);">*數值越小散熱越佳，受限於熱力學必定大於 0。</small>
+            </li>
+            <li><strong>近似效率 (Effectiveness)：</strong><br>
+                <code>效率(%) = (進水溫 - 出水溫) / (進水溫 - 濕球溫) × 100</code><br>
+                <small style="color: var(--text-muted);">*實際降溫幅度對比理論極限降溫幅度的比值。</small>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    // 控制 Modal 開關的腳本
+    const modal = document.getElementById("formulaModal");
+    function openModal() {
+        modal.style.display = "flex";
+    }
+    function closeModal() {
+        modal.style.display = "none";
+    }
+    // 點擊 Modal 外圍也能關閉
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    }
+
+    async function submitData() {
+        const payload = {
+            tower_rt: document.getElementById('tower_rt').value,
+            motor_np_kw: document.getElementById('motor_np_kw').value,
+            fan_np_kw: document.getElementById('fan_np_kw').value,
+            flow_meas: document.getElementById('flow_meas').value,
+            pump_kw_meas: document.getElementById('pump_kw_meas').value,
+            fan_kw_meas: document.getElementById('fan_kw_meas').value,
+            t_basin: document.getElementById('t_basin').value,
+            t_out: document.getElementById('t_out').value,
+            t_in: document.getElementById('t_in').value,
+            t_wet: document.getElementById('t_wet').value
+        };
+
+        const response = await fetch('/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        const resData = await response.json();
+        
+        const resultBox = document.getElementById('result-box');
+        const alertsContainer = document.getElementById('alerts-container');
+        const metricsContainer = document.getElementById('metrics-container');
+        
+        resultBox.style.display = 'block';
+        alertsContainer.innerHTML = '';
+        metricsContainer.innerHTML = '';
+
+        resData.alerts.forEach(msg => {
+            const div = document.createElement('div');
+            div.className = 'alert-msg';
+            if(msg.includes('❌')) div.style.color = 'var(--accent-red)';
+            else if(msg.includes('⚠')) div.style.color = 'var(--accent-yellow)';
+            else if(msg.includes('✅')) div.style.color = 'var(--accent-green)';
+            div.innerText = msg;
+            alertsContainer.appendChild(div);
+        });
+
+        const metricLabels = {
+            'estimated_flow': '依 RT 推算之標準流量',
+            'flow_ratio': '實測流量與推算標準比值',
+            'motor_load': '水泵馬達負載率',
+            'fan_load': '風扇馬達負載率',
+            'approach': '水塔趨近溫度',
+            'effectiveness': '水塔近似效率'
+        };
+
+        for (const [key, val] of Object.entries(resData.metrics)) {
+            const row = document.createElement('div');
+            row.className = 'metric-row';
+            row.innerHTML = `<span>${metricLabels[key]}</span> <strong>${val}</strong>`;
+            metricsContainer.appendChild(row);
+        }
+    }
+</script>
+</body>
+</html>
